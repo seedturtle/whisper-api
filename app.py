@@ -4,11 +4,11 @@ from flask import Flask, request, jsonify, send_from_directory, render_template_
 from flask_cors import CORS
 from faster_whisper import WhisperModel
 import tempfile
+import base64
 
 app = Flask(__name__)
 CORS(app)
 
-# Model size: tiny, base, small, medium, large-v3
 MODEL_SIZE = os.environ.get("MODEL_SIZE", "base")
 MODEL_PATH = os.environ.get("MODEL_PATH", None)
 
@@ -61,6 +61,35 @@ HTML_TEMPLATE = '''
             margin-bottom: 30px;
             font-size: 0.9rem;
         }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #eee;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+            color: #999;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Upload Tab */
         .upload-area {
             border: 3px dashed #ddd;
             border-radius: 12px;
@@ -91,6 +120,48 @@ HTML_TEMPLATE = '''
             font-size: 0.85rem;
             margin-top: 8px;
         }
+        
+        /* Record Tab */
+        .record-area {
+            text-align: center;
+            padding: 30px 20px;
+        }
+        .record-btn {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 48px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        .record-btn:hover {
+            transform: scale(1.05);
+        }
+        .record-btn.recording {
+            background: linear-gradient(135deg, #e66767 0%, #c0392b 100%);
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .record-status {
+            margin-top: 20px;
+            color: #666;
+            font-size: 1rem;
+        }
+        .record-timer {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #333;
+            margin-top: 10px;
+        }
+        
+        /* Common */
         #fileInput {
             display: none;
         }
@@ -144,43 +215,6 @@ HTML_TEMPLATE = '''
             margin-bottom: 20px;
             background: white;
         }
-        .result-area {
-            margin-top: 25px;
-            display: none;
-        }
-        .result-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .result-title {
-            font-weight: 600;
-            color: #333;
-        }
-        .copy-btn {
-            background: #f0f0f0;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: all 0.3s ease;
-        }
-        .copy-btn:hover {
-            background: #e0e0e0;
-        }
-        .result-text {
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 20px;
-            line-height: 1.8;
-            color: #333;
-            max-height: 300px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
         .loading {
             display: none;
             text-align: center;
@@ -210,38 +244,115 @@ HTML_TEMPLATE = '''
             margin-top: 15px;
             display: none;
         }
+        .result-area {
+            margin-top: 25px;
+            display: none;
+        }
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .result-title {
+            font-weight: 600;
+            color: #333;
+        }
+        .copy-btn {
+            background: #f0f0f0;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+        }
+        .copy-btn:hover {
+            background: #e0e0e0;
+        }
+        .result-text {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            line-height: 1.8;
+            color: #333;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .audio-preview {
+            margin-top: 15px;
+            display: none;
+        }
+        .audio-preview audio {
+            width: 100%;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🎙️ Whisper 語音轉文字</h1>
-        <p class="subtitle">基於 Faster Whisper - 本地運行，無需 API Key</p>
+        <p class="subtitle">基於 Faster Whisper - 支援錄音和檔案上傳</p>
         
-        <div class="upload-area" id="uploadArea">
-            <div class="upload-icon">📁</div>
-            <div class="upload-text">點擊或拖曳音檔到这里</div>
-            <div class="upload-hint">支援 MP3, WAV, M4A, OGG, FLAC, WebM</div>
-        </div>
-        <input type="file" id="fileInput" accept="audio/*">
-        
-        <div class="file-info" id="fileInfo">
-            <div class="file-name" id="fileName"></div>
-            <div class="file-size" id="fileSize"></div>
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('upload')">📁 上傳檔案</div>
+            <div class="tab" onclick="switchTab('record')">🎤 錄音</div>
         </div>
         
-        <select class="language-select" id="language">
-            <option value="">自動偵測語言</option>
-            <option value="zh">中文 (Chinese)</option>
-            <option value="en">English (英文)</option>
-            <option value="ja">日本語 (日文)</option>
-            <option value="ko">한국어 (韓文)</option>
-            <option value="fr">Français (法文)</option>
-            <option value="de">Deutsch (德文)</option>
-            <option value="es">Español (西班牙文)</option>
-        </select>
+        <!-- Upload Tab -->
+        <div class="tab-content active" id="uploadTab">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">點擊或拖曳音檔到这里</div>
+                <div class="upload-hint">支援 MP3, WAV, M4A, OGG, FLAC, WebM</div>
+            </div>
+            <input type="file" id="fileInput" accept="audio/*">
+            
+            <div class="file-info" id="fileInfo">
+                <div class="file-name" id="fileName"></div>
+                <div class="file-size" id="fileSize"></div>
+            </div>
+            
+            <select class="language-select" id="language">
+                <option value="">自動偵測語言</option>
+                <option value="zh">中文 (Chinese)</option>
+                <option value="en">English (英文)</option>
+                <option value="ja">日本語 (日文)</option>
+                <option value="ko">한국어 (韓文)</option>
+                <option value="fr">Français (法文)</option>
+                <option value="de">Deutsch (德文)</option>
+                <option value="es">Español (西班牙文)</option>
+            </select>
+            
+            <button class="btn btn-primary" id="transcribeBtn" disabled>開始轉換</button>
+        </div>
         
-        <button class="btn btn-primary" id="transcribeBtn" disabled>開始轉換</button>
+        <!-- Record Tab -->
+        <div class="tab-content" id="recordTab">
+            <div class="record-area">
+                <button class="record-btn" id="recordBtn" onclick="toggleRecording()">🎤</button>
+                <div class="record-status" id="recordStatus">點擊開始錄音</div>
+                <div class="record-timer" id="recordTimer">00:00</div>
+            </div>
+            
+            <select class="language-select" id="languageRecord">
+                <option value="">自動偵測語言</option>
+                <option value="zh">中文 (Chinese)</option>
+                <option value="en">English (英文)</option>
+                <option value="ja">日本語 (日文)</option>
+                <option value="ko">한국어 (韓文)</option>
+            </select>
+            
+            <button class="btn btn-primary" id="transcribeRecordBtn" onclick="transcribeRecording()" disabled>轉換錄音</button>
+            
+            <div class="audio-preview" id="audioPreview">
+                <audio id="audioPlayer" controls></audio>
+            </div>
+        </div>
         
+        <!-- Loading & Result -->
         <div class="loading" id="loading">
             <div class="spinner"></div>
             <div class="loading-text">正在轉換中，請稍候...</div>
@@ -259,17 +370,21 @@ HTML_TEMPLATE = '''
     </div>
     
     <script>
+        // Tab switching
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab:nth-child(${tab === 'upload' ? 1 : 2})`).classList.add('active');
+            document.getElementById(tab + 'Tab').classList.add('active');
+        }
+        
+        // Upload functionality
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
         const fileInfo = document.getElementById('fileInfo');
         const fileName = document.getElementById('fileName');
         const fileSize = document.getElementById('fileSize');
         const transcribeBtn = document.getElementById('transcribeBtn');
-        const language = document.getElementById('language');
-        const loading = document.getElementById('loading');
-        const error = document.getElementById('error');
-        const resultArea = document.getElementById('resultArea');
-        const resultText = document.getElementById('resultText');
         
         let selectedFile = null;
         
@@ -322,41 +437,139 @@ HTML_TEMPLATE = '''
             if (!selectedFile) return;
             
             transcribeBtn.disabled = true;
-            loading.style.display = 'block';
-            error.style.display = 'none';
-            resultArea.style.display = 'none';
+            showLoading();
             
             const formData = new FormData();
             formData.append('file', selectedFile);
-            if (language.value) {
-                formData.append('language', language.value);
-            }
+            const lang = document.getElementById('language').value;
+            if (lang) formData.append('language', lang);
             
             try {
                 const response = await fetch('/transcribe', {
                     method: 'POST',
                     body: formData
                 });
-                
                 const data = await response.json();
-                
-                if (!response.ok) {
-                    throw new Error(data.error || '轉換失敗');
-                }
-                
-                resultText.textContent = data.text || '沒有偵測到文字';
-                resultArea.style.display = 'block';
+                if (!response.ok) throw new Error(data.error || '轉換失敗');
+                showResult(data.text || '沒有偵測到文字');
             } catch (err) {
                 showError(err.message);
             } finally {
-                loading.style.display = 'none';
                 transcribeBtn.disabled = false;
             }
         });
         
+        // Recording functionality
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let recordedBlob = null;
+        let timerInterval = null;
+        let seconds = 0;
+        
+        const recordBtn = document.getElementById('recordBtn');
+        const recordStatus = document.getElementById('recordStatus');
+        const recordTimer = document.getElementById('recordTimer');
+        const transcribeRecordBtn = document.getElementById('transcribeRecordBtn');
+        const audioPreview = document.getElementById('audioPreview');
+        const audioPlayer = document.getElementById('audioPlayer');
+        
+        async function toggleRecording() {
+            if (!isRecording) {
+                // Start recording
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+                    
+                    mediaRecorder.ondataavailable = (e) => {
+                        audioChunks.push(e.data);
+                    };
+                    
+                    mediaRecorder.onstop = () => {
+                        recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const audioUrl = URL.createObjectURL(recordedBlob);
+                        audioPlayer.src = audioUrl;
+                        audioPreview.style.display = 'block';
+                        transcribeRecordBtn.disabled = false;
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+                    
+                    mediaRecorder.start();
+                    isRecording = true;
+                    recordBtn.classList.add('recording');
+                    recordBtn.textContent = '⏹️';
+                    recordStatus.textContent = '錄音中...點擊停止';
+                    seconds = 0;
+                    timerInterval = setInterval(() => {
+                        seconds++;
+                        const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+                        const secs = (seconds % 60).toString().padStart(2, '0');
+                        recordTimer.textContent = `${mins}:${secs}`;
+                    }, 1000);
+                } catch (err) {
+                    showError('無法訪問麥克風: ' + err.message);
+                }
+            } else {
+                // Stop recording
+                mediaRecorder.stop();
+                isRecording = false;
+                recordBtn.classList.remove('recording');
+                recordBtn.textContent = '🎤';
+                recordStatus.textContent = '錄音完成';
+                clearInterval(timerInterval);
+            }
+        }
+        
+        async function transcribeRecording() {
+            if (!recordedBlob) return;
+            
+            transcribeRecordBtn.disabled = true;
+            showLoading();
+            
+            const formData = new FormData();
+            formData.append('file', recordedBlob, 'recording.webm');
+            const lang = document.getElementById('languageRecord').value;
+            if (lang) formData.append('language', lang);
+            
+            try {
+                const response = await fetch('/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || '轉換失敗');
+                showResult(data.text || '沒有偵測到文字');
+            } catch (err) {
+                showError(err.message);
+            } finally {
+                transcribeRecordBtn.disabled = false;
+            }
+        }
+        
+        // Common
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const resultArea = document.getElementById('resultArea');
+        const resultText = document.getElementById('resultText');
+        
+        function showLoading() {
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            resultArea.style.display = 'none';
+        }
+        
         function showError(msg) {
+            loading.style.display = 'none';
             error.textContent = msg;
             error.style.display = 'block';
+        }
+        
+        function showResult(text) {
+            loading.style.display = 'none';
+            error.style.display = 'none';
+            resultText.textContent = text;
+            resultArea.style.display = 'block';
         }
         
         function copyResult() {
