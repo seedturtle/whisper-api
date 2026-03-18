@@ -9,7 +9,7 @@ import base64
 app = Flask(__name__)
 CORS(app)
 
-MODEL_SIZE = os.environ.get("MODEL_SIZE", "base")
+MODEL_SIZE = os.environ.get("MODEL_SIZE", "small")
 MODEL_PATH = os.environ.get("MODEL_PATH", None)
 
 print(f"Loading Whisper model: {MODEL_SIZE}...")
