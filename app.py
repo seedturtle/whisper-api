@@ -357,7 +357,7 @@ HTML_TEMPLATE = '''
                 <button class="record-btn" id="recordBtn" onclick="toggleRecording()">🎤</button>
                 <div class="record-status" id="recordStatus">點擊開始錄音</div>
                 <div class="record-timer" id="recordTimer">00:00:00</div>
-                <div class="limit-info">🎙️ 最長支援 1 小時連續錄音</div>
+                <div class="limit-info">🎙️ 最長支援 {{ max_hours }} 小時連續錄音</div>
             </div>
             
             <select class="language-select" id="languageRecord">
@@ -612,7 +612,8 @@ HTML_TEMPLATE = '''
 @app.route("/")
 def index():
     max_size_mb = int(os.environ.get("MAX_AUDIO_SIZE_MB", 100))
-    return render_template_string(HTML_TEMPLATE, max_size_mb=max_size_mb)
+    max_hours = int(os.environ.get("MAX_RECORDING_SECONDS", 3600)) // 3600
+    return render_template_string(HTML_TEMPLATE, max_size_mb=max_size_mb, max_hours=max_hours)
 
 @app.route("/health", methods=["GET"])
 def health():
