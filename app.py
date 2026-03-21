@@ -5,9 +5,19 @@ from flask_cors import CORS
 from faster_whisper import WhisperModel
 import tempfile
 import base64
+import time
 
 app = Flask(__name__)
 CORS(app)
+
+# Flask 上傳設定
+app.config['MAX_CONTENT_LENGTH'] = MAX_AUDIO_SIZE
+app.config['REQUEST_TIMEOUT'] = MAX_TRANSCRIPTION_TIME
+
+# 音頻限制設定
+MAX_AUDIO_SIZE = int(os.environ.get("MAX_AUDIO_SIZE_MB", 100)) * 1024 * 1024  # 預設 100MB
+MAX_RECORDING_TIME = int(os.environ.get("MAX_RECORDING_SECONDS", 3600))  # 預設 1 小時
+MAX_TRANSCRIPTION_TIME = int(os.environ.get("MAX_TRANSCRIPTION_TIME", 300))  # 預設 5 分鐘
 
 MODEL_SIZE = os.environ.get("MODEL_SIZE", "small")
 MODEL_PATH = os.environ.get("MODEL_PATH", None)
@@ -120,6 +130,12 @@ HTML_TEMPLATE = '''
             font-size: 0.85rem;
             margin-top: 8px;
         }
+        .upload-limit {
+            color: #48bb78;
+            font-size: 0.85rem;
+            margin-top: 8px;
+            font-weight: 600;
+        }
         
         /* Record Tab */
         .record-area {
@@ -158,6 +174,11 @@ HTML_TEMPLATE = '''
             font-size: 2rem;
             font-weight: 700;
             color: #333;
+            margin-top: 10px;
+        }
+        .limit-info {
+            font-size: 0.8rem;
+            color: #999;
             margin-top: 10px;
         }
         
@@ -307,6 +328,7 @@ HTML_TEMPLATE = '''
                 <div class="upload-icon">📁</div>
                 <div class="upload-text">點擊或拖曳音檔到这里</div>
                 <div class="upload-hint">支援 MP3, WAV, M4A, OGG, FLAC, WebM</div>
+                <div class="upload-limit">📦 最大支援 100MB 音檔</div>
             </div>
             <input type="file" id="fileInput" accept="audio/*">
             
@@ -334,7 +356,8 @@ HTML_TEMPLATE = '''
             <div class="record-area">
                 <button class="record-btn" id="recordBtn" onclick="toggleRecording()">🎤</button>
                 <div class="record-status" id="recordStatus">點擊開始錄音</div>
-                <div class="record-timer" id="recordTimer">00:00</div>
+                <div class="record-timer" id="recordTimer">00:00:00</div>
+                <div class="limit-info">🎙️ 最長支援 1 小時連續錄音</div>
             </div>
             
             <select class="language-select" id="languageRecord">
@@ -355,7 +378,8 @@ HTML_TEMPLATE = '''
         <!-- Loading & Result -->
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <div class="loading-text">正在轉換中，請稍候...</div>
+            <div class="loading-text" id="loadingText">正在轉換中，請稍候...</div>
+            <div class="limit-info" style="margin-top:10px;">較大的檔案可能需要幾分鐘處理</div>
         </div>
         
         <div class="error" id="error"></div>
@@ -503,9 +527,10 @@ HTML_TEMPLATE = '''
                     seconds = 0;
                     timerInterval = setInterval(() => {
                         seconds++;
-                        const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+                        const hrs = Math.floor(seconds / 3600).toString().padStart(2, '0');
+                        const mins = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
                         const secs = (seconds % 60).toString().padStart(2, '0');
-                        recordTimer.textContent = `${mins}:${secs}`;
+                        recordTimer.textContent = `${hrs}:${mins}:${secs}`;
                     }, 1000);
                 } catch (err) {
                     showError('無法訪問麥克風: ' + err.message);
@@ -601,26 +626,47 @@ def transcribe():
     if file.filename == "":
         return jsonify({"error": "Empty filename"}), 400
     
+    # 檢查檔案大小
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+    
+    if file_size > MAX_AUDIO_SIZE:
+        max_mb = MAX_AUDIO_SIZE / (1024 * 1024)
+        return jsonify({
+            "error": f"檔案太大，請上傳小於 {max_mb:.0f}MB 的音檔"
+        }), 400
+    
     language = request.form.get("language", None)
     
-    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp:
+    # 保留原始副檔名
+    ext = os.path.splitext(file.filename)[1] if file.filename else ".webm"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
     
     try:
+        print(f"Processing audio file: {file_size / (1024*1024):.2f} MB")
+        start_time = time.time()
+        
         segments, info = model.transcribe(
             tmp_path,
             language=language,
             beam_size=5,
-            vad_filter=True
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500)
         )
         
         full_text = " ".join([seg.text for seg in segments])
         
+        elapsed = time.time() - start_time
+        print(f"Transcription completed in {elapsed:.2f} seconds")
+        
         result = {
             "text": full_text.strip(),
             "language": info.language if hasattr(info, 'language') else language or "auto",
-            "duration": info.duration if hasattr(info, 'duration') else None
+            "duration": info.duration if hasattr(info, 'duration') else None,
+            "file_size_mb": round(file_size / (1024 * 1024), 2)
         }
         
         return jsonify(result)
@@ -636,7 +682,12 @@ def transcribe():
 def list_models():
     return jsonify({
         "current_model": MODEL_SIZE,
-        "available_models": ["tiny", "base", "small", "medium", "large-v3"]
+        "available_models": ["tiny", "base", "small", "medium", "large-v3"],
+        "limits": {
+            "max_file_size_mb": MAX_AUDIO_SIZE // (1024 * 1024),
+            "max_recording_seconds": MAX_RECORDING_TIME,
+            "max_transcription_seconds": MAX_TRANSCRIPTION_TIME
+        }
     })
 
 if __name__ == "__main__":
