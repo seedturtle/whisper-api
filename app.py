@@ -10,14 +10,14 @@ import time
 app = Flask(__name__)
 CORS(app)
 
-# Flask 上傳設定
-app.config['MAX_CONTENT_LENGTH'] = MAX_AUDIO_SIZE
-app.config['REQUEST_TIMEOUT'] = MAX_TRANSCRIPTION_TIME
-
-# 音頻限制設定
+# 音頻限制設定（這些要在 Flask config 之前定義）
 MAX_AUDIO_SIZE = int(os.environ.get("MAX_AUDIO_SIZE_MB", 100)) * 1024 * 1024  # 預設 100MB
 MAX_RECORDING_TIME = int(os.environ.get("MAX_RECORDING_SECONDS", 3600))  # 預設 1 小時
 MAX_TRANSCRIPTION_TIME = int(os.environ.get("MAX_TRANSCRIPTION_TIME", 300))  # 預設 5 分鐘
+
+# Flask 上傳設定
+app.config['MAX_CONTENT_LENGTH'] = MAX_AUDIO_SIZE
+app.config['REQUEST_TIMEOUT'] = MAX_TRANSCRIPTION_TIME
 
 MODEL_SIZE = os.environ.get("MODEL_SIZE", "small")
 MODEL_PATH = os.environ.get("MODEL_PATH", None)
