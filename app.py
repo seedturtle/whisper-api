@@ -346,9 +346,15 @@ HTML_TEMPLATE = '''
                 <option value="fr">Français (法文)</option>
                 <option value="de">Deutsch (德文)</option>
                 <option value="es">Español (西班牙文)</option>
+                <option value="pt">Português (葡萄牙文)</option>
+                <option value="it">Italiano (義大利文)</option>
+                <option value="ru">Русский (俄文)</option>
+                <option value="ar">العربية (阿拉伯文)</option>
+                <option value="hi">हिन्दी (印地文)</option>
                 <option value="id">Bahasa Indonesia (印尼文)</option>
                 <option value="vi">Tiếng Việt (越南文)</option>
                 <option value="th">ภาษาไทย (泰文)</option>
+                <option value="ms">Bahasa Melayu (馬來文)</option>
             </select>
             
             <button class="btn btn-primary" id="transcribeBtn" disabled>開始轉換</button>
@@ -369,9 +375,18 @@ HTML_TEMPLATE = '''
                 <option value="en">English (英文)</option>
                 <option value="ja">日本語 (日文)</option>
                 <option value="ko">한국어 (韓文)</option>
+                <option value="fr">Français (法文)</option>
+                <option value="de">Deutsch (德文)</option>
+                <option value="es">Español (西班牙文)</option>
+                <option value="pt">Português (葡萄牙文)</option>
+                <option value="it">Italiano (義大利文)</option>
+                <option value="ru">Русский (俄文)</option>
+                <option value="ar">العربية (阿拉伯文)</option>
+                <option value="hi">हिन्दी (印地文)</option>
                 <option value="id">Bahasa Indonesia (印尼文)</option>
                 <option value="vi">Tiếng Việt (越南文)</option>
                 <option value="th">ภาษาไทย (泰文)</option>
+                <option value="ms">Bahasa Melayu (馬來文)</option>
             </select>
             
             <button class="btn btn-primary" id="transcribeRecordBtn" onclick="transcribeRecording()" disabled>轉換錄音</button>
