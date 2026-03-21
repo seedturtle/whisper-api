@@ -328,7 +328,7 @@ HTML_TEMPLATE = '''
                 <div class="upload-icon">📁</div>
                 <div class="upload-text">點擊或拖曳音檔到这里</div>
                 <div class="upload-hint">支援 MP3, WAV, M4A, OGG, FLAC, WebM</div>
-                <div class="upload-limit">📦 最大支援 100MB 音檔</div>
+                <div class="upload-limit">📦 最大支援 {{ max_size_mb }}MB 音檔</div>
             </div>
             <input type="file" id="fileInput" accept="audio/*">
             
@@ -611,7 +611,8 @@ HTML_TEMPLATE = '''
 
 @app.route("/")
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    max_size_mb = int(os.environ.get("MAX_AUDIO_SIZE_MB", 100))
+    return render_template_string(HTML_TEMPLATE, max_size_mb=max_size_mb)
 
 @app.route("/health", methods=["GET"])
 def health():
