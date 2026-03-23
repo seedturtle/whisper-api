@@ -338,7 +338,6 @@ HTML_TEMPLATE = '''
             </div>
             
             <select class="language-select" id="language">
-                <option value="">自動偵測語言</option>
                 <option value="zh">中文 (Chinese)</option>
                 <option value="en">English (英文)</option>
                 <option value="ja">日本語 (日文)</option>
@@ -370,7 +369,6 @@ HTML_TEMPLATE = '''
             </div>
             
             <select class="language-select" id="languageRecord">
-                <option value="">自動偵測語言</option>
                 <option value="zh">中文 (Chinese)</option>
                 <option value="en">English (英文)</option>
                 <option value="ja">日本語 (日文)</option>
