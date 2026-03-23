@@ -488,15 +488,26 @@ HTML_TEMPLATE = '''
             if (lang) formData.append('language', lang);
             
             try {
+                // Timeout: 2小時 (7200秒)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 7200000);
+                
                 const response = await fetch('/transcribe', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
+                
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || '轉換失敗');
                 showResult(data.text || '沒有偵測到文字');
             } catch (err) {
-                showError(err.message);
+                if (err.name === 'AbortError') {
+                    showError('轉換時間過長，已逾時。請嘗試較小的音訊檔案。');
+                } else {
+                    showError(err.message);
+                }
             } finally {
                 transcribeBtn.disabled = false;
             }
@@ -577,15 +588,26 @@ HTML_TEMPLATE = '''
             if (lang) formData.append('language', lang);
             
             try {
+                // Timeout: 2小時 (7200秒)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 7200000);
+                
                 const response = await fetch('/transcribe', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
+                
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.error || '轉換失敗');
                 showResult(data.text || '沒有偵測到文字');
             } catch (err) {
-                showError(err.message);
+                if (err.name === 'AbortError') {
+                    showError('轉換時間過長，已逾時。請嘗試較短的錄音。');
+                } else {
+                    showError(err.message);
+                }
             } finally {
                 transcribeRecordBtn.disabled = false;
             }
